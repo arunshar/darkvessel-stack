@@ -15,9 +15,6 @@ from __future__ import annotations
 import gradio as gr
 import torch
 
-from darkvessel.backbones.geo_backbone import GeoBackbone
-from darkvessel.heads.anomaly import PiDPMAnomalyHead
-
 
 AOIS = {
     "Gulf of Oman": (24.55, 58.10),
@@ -28,19 +25,15 @@ AOIS = {
 }
 
 
-_BACKBONE = GeoBackbone(name="prithvi-2", in_chans=6, image_size=224, stub=True)
-_HEAD = PiDPMAnomalyHead(embed_dim=_BACKBONE.spec.embed_dim, ais_dim=5, hidden=512)
-
-
 def run_pipeline(aoi: str) -> str:
     if aoi not in AOIS:
         return "Unknown AOI."
     torch.manual_seed(hash(aoi) & 0xFFFF)
     chip = torch.randn(1, 6, 224, 224)
     ais = torch.randn(1, 12, 5)
-    tokens = _BACKBONE(chip)
-    out = _HEAD(tokens, ais)
-    score = torch.sigmoid(out["score"]).item()
+    optical_sar_energy = chip.square().mean()
+    ais_gap_energy = ais[..., :2].square().mean()
+    score = torch.sigmoid(0.55 * optical_sar_energy + 0.45 * ais_gap_energy - 0.75).item()
     lat, lon = AOIS[aoi]
     return (
         f"AOI: {aoi} ({lat:.3f}, {lon:.3f})\n"
