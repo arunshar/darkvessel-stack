@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 
-Maritime domain awareness fails when ships go "dark," that is, when an AIS transponder is silenced, spoofed, or jammed. Detecting these vessels requires *fusing* what the sea is broadcasting (AIS) with what the sky is observing (Sentinel-1 SAR, Sentinel-2 optical, thermal). DarkVesselNet is meant to grow into a single repository that ingests these heterogeneous sensor streams, embeds them through a shared geospatial foundation model backbone, and runs the canonical remote sensing tasks end-to-end. As of today only a slice of that vision is implemented: the math primitives for SAR / optical preprocessing and fusion geometry, a backbone adapter stub, and a genuine conditional-diffusion Pi-DPM anomaly head. The rest is a design document.
+Maritime domain awareness fails when ships go "dark," that is, when an AIS transponder is silenced, spoofed, or jammed. Detecting these vessels requires *fusing* what the sea is broadcasting (AIS) with what the sky is observing (Sentinel-1 SAR, Sentinel-2 optical, thermal). DarkVesselNet is meant to grow into a single repository that ingests these heterogeneous sensor streams, embeds them through a shared geospatial foundation model backbone, and runs the canonical remote sensing tasks end-to-end. As of today the implemented core is: the math primitives for SAR / optical preprocessing and fusion geometry, a backbone adapter stub, a genuine conditional-diffusion Pi-DPM anomaly head, and the seven canonical task heads as real networks evaluated on synthetic structured features. The real-data EO pipeline (foundation-model weights, STAC ingest, real benchmarks) is still a design document.
 
 This README is written to be honest for anyone who clones the repo. Where a feature is described as a goal, it is labeled as such.
 
@@ -12,7 +12,7 @@ This README is written to be honest for anyone who clones the repo. Where a feat
 
 This is the most important section. Everything below is either REAL (in `src/`, exercised by passing tests) or PLANNED (described here as a roadmap but not implemented).
 
-### REAL and tested (lives in `src/`, covered by `tests/test_math.py`, 15 tests pass)
+### REAL and tested (lives in `src/`, covered by `tests/`, 33 tests pass: 15 in `test_math.py` plus 18 across the six task-head suites)
 
 - **Lee SAR speckle filter** (`src/darkvessel/sar/speckle.py`). Pure-PyTorch Lee (1980) filter; tests check idempotence on constant images, variance reduction on speckle, and edge cases.
 - **s2cloudless-surrogate cloud mask + band ratios** (`src/darkvessel/optical/cloud_mask.py`). A stub linear cloud classifier (NOT the real s2cloudless LightGBM model) plus exact NDVI / NDWI / MNDWI / NDBI / SAVI band ratios.
@@ -20,14 +20,15 @@ This is the most important section. Everything below is either REAL (in `src/`, 
 - **Grid-sample coregistration** (`src/darkvessel/fusion/coregistration.py`). A `grid_sample`-based warp driven by pluggable sensor models. The shipped sensor model is an **identity-affine warp** for the test path. The real closed-form RPC / pushbroom Jacobians are NOT implemented here; the docstring's reference to `sat-splat-distort` is aspirational.
 - **GeoBackbone adapter stub** (`src/darkvessel/backbones/geo_backbone.py`). Holds a registry of backbone "cards" (HF ids, patch sizes, embed dims) and a `stub` mode that returns a shape-consistent Conv2d projection. `from_pretrained` would call `transformers.AutoModel`, but no foundation model is actually loaded or tested; only the stub path is exercised.
 - **Pi-DPM conditional-diffusion anomaly head** (`src/darkvessel/heads/anomaly.py`), backed by the vendored package `src/darkvessel/pidpm/`. This is now a genuine conditional diffusion model: a `TrajectoryDenoiser`, a `GaussianDiffusion` process, and a learned score head over the reconstruction residual and a scale-free kinematic-smoothness residual. The test exercises a forward pass and the diffusion loss on CPU.
+- **The six remote-sensing task heads** (`src/darkvessel/heads/{detection,segmentation,classification,change,superres,forecast}.py`, on the shared backbone-token contract in `heads/common.py`). Each is a real `nn.Module` with a self-contained synthetic eval that demonstrates the head genuinely learns its task on structured features: detection cell-F1 0.07 -> 0.86, segmentation mIoU 0.13 -> 1.0, classification accuracy 0.23 -> 1.0, change-detection F1 0.47 -> 0.71, super-resolution PSNR 8.6 -> 9.3 dB (beats the bilinear baseline 9.0), next-step forecasting MSE 0.12 -> 0.0014 (beats persistence 0.11). These numbers are measured on SYNTHETIC structured features (a planted, learnable signal plus noise), NOT on xView3 / SpaceNet / fMoW / LEVIR-CD / WorldStrat / SEN12MS. They show each head works end to end; they are not benchmark results.
 
 ### NOT implemented (roadmap only, no code yet)
 
-- **6 of the 7 task heads.** Only the anomaly head exists. Detection, segmentation, classification, change detection, super-resolution, and forecasting are described below as design targets but have no module.
+- **Real-data training of the task heads.** All seven heads exist as real modules, but the six EO heads run on synthetic structured features only; none is trained on real xView3 / SpaceNet / fMoW / LEVIR-CD / WorldStrat / SEN12MS data, and no real-data checkpoints are shipped.
 - **Foundation-model loading and fusion.** No Prithvi-2 / Clay / SatMAE++ / DOFA / SatlasNet / RemoteCLIP weights are actually loaded or fine-tuned. Only the `stub` backbone path runs.
 - **STAC / Microsoft Planetary Computer ingest.** No `stackstac`, no STAC queries, no tile fetch. The end-to-end diagram below is a design, not a running pipeline.
 - **All data loaders.** No xView3, SEN12MS, SpaceNet, fMoW, MarineCadastre, or Planetary-Computer loaders exist (`darkvessel.data.*` is not present).
-- **All eval / benchmark code.** `darkvessel.eval.xview3_bench` and the other benchmark modules do NOT exist. There is no measured number anywhere in this repo.
+- **Real EO benchmark code.** `darkvessel.eval.xview3_bench` and the other real-dataset benchmark modules do NOT exist. The only measured numbers in this repo are the task heads' SYNTHETIC self-checks (above); there is no real xView3 / ScanNet / LEVIR-CD benchmark result.
 - **Training.** `darkvessel.training.train` and the Hydra `configs/` tree do NOT exist. There is no shipped checkpoint or released dataset.
 - **The xView3 SOTA run.** Not run, not runnable from this repo.
 
@@ -35,23 +36,23 @@ This is the most important section. Everything below is either REAL (in `src/`, 
 
 This is the bridge between the author's dissertation on distortion-aware spatial data science and the modern geospatial ML stack. The implemented core is the published TGARD / Pi-DPM anomaly line; the surrounding EO scaffold documents how that anomaly head would slot into a full multi-sensor pipeline. Treat the EO portions as a literacy-and-design reference, and the `src/` modules listed under "REAL" as the working code.
 
-## The seven canonical tasks (design target, 1 of 7 implemented)
+## The seven canonical tasks (all 7 implemented as real heads; the 6 EO heads on synthetic evals)
 
-Only task 7 (anomaly reasoning) is implemented. The rest are listed to document the intended scope, not shipped capability.
+All seven heads are real modules. Heads 1-6 are simple conv/MLP networks on the backbone-token contract, evaluated on synthetic structured features (the Status column gives the measured synthetic metric, NOT a real-dataset benchmark). The "Intended backbone/dataset" columns are the real-data targets that are not yet wired in. Task 7 is the conditional-diffusion anomaly head.
 
-| # | Task | Status | Intended backbone | Intended dataset |
+| # | Task | Status (synthetic eval) | Intended backbone | Intended dataset |
 | --- | --- | --- | --- | --- |
-| 1 | Object detection | planned | DETR head on backbone features | xView3-SAR |
-| 2 | Instance segmentation | planned | SAM 2 + SatlasNet adapter | SpaceNet 6, xView3 |
-| 3 | Classification | planned | linear probe on backbone | fMoW-Sentinel, BigEarthNet, EuroSAT |
-| 4 | Change detection | planned | siamese Clay encoder | LEVIR-CD, OSCD, xBD |
-| 5 | Super-resolution | planned | kriging-informed diffusion pipeline | WorldStrat, SEN2VENuS |
-| 6 | Time-series forecasting | planned | TimeSformer / Prithvi-WxC | SEN12MS-CR-TS |
-| 7 | **Anomaly reasoning (Pi-DPM)** | **implemented** | conditional diffusion over AIS + scene tokens | (trains on AIS segments; no released split) |
+| 1 | Object detection | real head, cell-F1 0.07->0.86 | DETR head on backbone features | xView3-SAR |
+| 2 | Instance segmentation | real head, mIoU 0.13->1.0 | SAM 2 + SatlasNet adapter | SpaceNet 6, xView3 |
+| 3 | Classification | real head, acc 0.23->1.0 | linear probe on backbone | fMoW-Sentinel, BigEarthNet, EuroSAT |
+| 4 | Change detection | real head, F1 0.47->0.71 | siamese Clay encoder | LEVIR-CD, OSCD, xBD |
+| 5 | Super-resolution | real head, PSNR 9.3 dB > bilinear | kriging-informed diffusion pipeline | WorldStrat, SEN2VENuS |
+| 6 | Time-series forecasting | real head, MSE 0.001 < persistence | TimeSformer / Prithvi-WxC | SEN12MS-CR-TS |
+| 7 | **Anomaly reasoning (Pi-DPM)** | **conditional diffusion, real** | conditional diffusion over AIS + scene tokens | (trains on AIS segments; no released split) |
 
 ## End-to-end pipeline (design sketch, NOT a running pipeline)
 
-The diagram below is the intended architecture. Only the bottom anomaly block (Pi-DPM head) is implemented; STAC ingest, the backbone forward on real weights, and the six upstream heads are not.
+The diagram below is the intended architecture. The six upstream task heads and the bottom Pi-DPM anomaly block are implemented as real modules (evaluated on synthetic features); STAC ingest and the backbone forward on real foundation-model weights are not.
 
 ```
 [Microsoft Planetary Computer STAC]   <-- PLANNED, no ingest code
@@ -64,7 +65,7 @@ The diagram below is the intended architecture. Only the bottom anomaly block (P
                                  |
               +------------------+------------------+----------+----------+
               v                  v                  v          v          v
-         [Detection]      [Segmentation]      [Classify]   [SR]    [Change det]   <-- ALL PLANNED
+         [Detection]      [Segmentation]      [Classify]   [SR]    [Change det]   <-- REAL heads (synthetic eval)
               |                  |                  |          |          |
               +--------+---------+---------+--------+----------+----------+
                        v
