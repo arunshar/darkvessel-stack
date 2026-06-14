@@ -1,6 +1,8 @@
 # Geospatial foundation models
 
-Six open backbones unified behind `GeoBackbone`. We use Prithvi-2 by default; others are one Hydra flag away.
+> Status: this is BACKGROUND / design reference on candidate backbones, not a description of shipped capability. The `GeoBackbone` adapter today only stores these metadata cards and runs a shape-consistent stub forward. No Prithvi-2 / Clay / SatMAE++ / DOFA / SatlasNet / RemoteCLIP weights are actually loaded, fine-tuned, or tested in any path. There are no Hydra configs.
+
+Six open backbones the `GeoBackbone` adapter is *designed* to unify. The intended default is Prithvi-2; today only the stub path runs.
 
 ## Prithvi-2 (NASA / IBM, 2024)
 
@@ -48,4 +50,4 @@ Six open backbones unified behind `GeoBackbone`. We use Prithvi-2 by default; ot
 
 ## Why six
 
-Interviewers ask "have you used Prithvi?" / "what about Clay?" / "do you know SatMAE?" - the right answer is "yes, all of them, here is the wrapper I wrote." This module is that wrapper.
+Interviewers ask "have you used Prithvi?" / "what about Clay?" / "do you know SatMAE?" The adapter is the wrapper that would unify them behind one interface. As shipped it carries their metadata and a stub forward; loading and fine-tuning the real weights is on the roadmap.

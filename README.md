@@ -1,74 +1,77 @@
 # DarkVesselNet
 
-> A multi-modal remote sensing stack for dark vessel detection. Sentinel-1 SAR + Sentinel-2 optical + AIS, fused through a geospatial foundation model backbone, with physics-informed anomaly reasoning from the TGARD / Pi-DPM thesis line. xView3-SAR benchmark, Microsoft Planetary Computer ingest, 7 canonical Earth-observation tasks under one repo.
+> A work-in-progress reference scaffold for multi-modal dark-vessel reasoning: Sentinel-1 SAR + Sentinel-2 optical + AIS, with a real physics-informed conditional-diffusion anomaly head from the TGARD / Pi-DPM thesis line and a design sketch for the surrounding Earth-observation stack. Most of the EO stack is a documented roadmap, not shipped code. Read the "Status" section before judging what is implemented.
 
-[![HF Space](https://img.shields.io/badge/%F0%9F%A4%97-HF%20Space-yellow)](https://huggingface.co/spaces/Arun0808/darkvessel-stack)
-![Model checkpoint scaffold](https://img.shields.io/badge/model-checkpoint%20scaffold-blue)
-![xView3-AIS scaffold](https://img.shields.io/badge/xView3--AIS-dataset%20scaffold-orange)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 
-Maritime domain awareness fails when ships go "dark," that is, when an AIS transponder is silenced, spoofed, or jammed. Detecting these vessels requires *fusing* what the sea is broadcasting (AIS) with what the sky is observing (Sentinel-1 SAR, Sentinel-2 optical, Landsat-9 thermal). DarkVesselNet is a single repository that ingests these heterogeneous sensor streams, embeds them through a shared geospatial foundation model backbone (Prithvi-2 / Clay / SatMAE++), and runs the seven canonical remote sensing tasks needed end-to-end: detection, segmentation, classification, change detection, super-resolution, time-series forecasting, and anomaly reasoning. The anomaly head is the published TGARD / Pi-DPM line from the author's dissertation; everything upstream is the modern Earth-observation stack a hiring manager expects a senior CV / remote sensing scientist to wield.
+Maritime domain awareness fails when ships go "dark," that is, when an AIS transponder is silenced, spoofed, or jammed. Detecting these vessels requires *fusing* what the sea is broadcasting (AIS) with what the sky is observing (Sentinel-1 SAR, Sentinel-2 optical, thermal). DarkVesselNet is meant to grow into a single repository that ingests these heterogeneous sensor streams, embeds them through a shared geospatial foundation model backbone, and runs the canonical remote sensing tasks end-to-end. As of today only a slice of that vision is implemented: the math primitives for SAR / optical preprocessing and fusion geometry, a backbone adapter stub, and a genuine conditional-diffusion Pi-DPM anomaly head. The rest is a design document.
 
-The result: a paste-into-a-pipeline reference implementation of "what you do when a vessel disappears off AIS for 47 minutes in the Gulf of Oman."
+This README is written to be honest for anyone who clones the repo. Where a feature is described as a goal, it is labeled as such.
+
+## Status: what is real vs. planned
+
+This is the most important section. Everything below is either REAL (in `src/`, exercised by passing tests) or PLANNED (described here as a roadmap but not implemented).
+
+### REAL and tested (lives in `src/`, covered by `tests/test_math.py`, 15 tests pass)
+
+- **Lee SAR speckle filter** (`src/darkvessel/sar/speckle.py`). Pure-PyTorch Lee (1980) filter; tests check idempotence on constant images, variance reduction on speckle, and edge cases.
+- **s2cloudless-surrogate cloud mask + band ratios** (`src/darkvessel/optical/cloud_mask.py`). A stub linear cloud classifier (NOT the real s2cloudless LightGBM model) plus exact NDVI / NDWI / MNDWI / NDBI / SAVI band ratios.
+- **Haversine + TGARD rendezvous geometry** (`src/darkvessel/ais/tgard.py`). Great-circle distance and the trajectory-gap feasibility / rendezvous score from the TGARD paper. This is the geometric core only, not the full STAGD + DRM pipeline.
+- **Grid-sample coregistration** (`src/darkvessel/fusion/coregistration.py`). A `grid_sample`-based warp driven by pluggable sensor models. The shipped sensor model is an **identity-affine warp** for the test path. The real closed-form RPC / pushbroom Jacobians are NOT implemented here; the docstring's reference to `sat-splat-distort` is aspirational.
+- **GeoBackbone adapter stub** (`src/darkvessel/backbones/geo_backbone.py`). Holds a registry of backbone "cards" (HF ids, patch sizes, embed dims) and a `stub` mode that returns a shape-consistent Conv2d projection. `from_pretrained` would call `transformers.AutoModel`, but no foundation model is actually loaded or tested; only the stub path is exercised.
+- **Pi-DPM conditional-diffusion anomaly head** (`src/darkvessel/heads/anomaly.py`), backed by the vendored package `src/darkvessel/pidpm/`. This is now a genuine conditional diffusion model: a `TrajectoryDenoiser`, a `GaussianDiffusion` process, and a learned score head over the reconstruction residual and a scale-free kinematic-smoothness residual. The test exercises a forward pass and the diffusion loss on CPU.
+
+### NOT implemented (roadmap only, no code yet)
+
+- **6 of the 7 task heads.** Only the anomaly head exists. Detection, segmentation, classification, change detection, super-resolution, and forecasting are described below as design targets but have no module.
+- **Foundation-model loading and fusion.** No Prithvi-2 / Clay / SatMAE++ / DOFA / SatlasNet / RemoteCLIP weights are actually loaded or fine-tuned. Only the `stub` backbone path runs.
+- **STAC / Microsoft Planetary Computer ingest.** No `stackstac`, no STAC queries, no tile fetch. The end-to-end diagram below is a design, not a running pipeline.
+- **All data loaders.** No xView3, SEN12MS, SpaceNet, fMoW, MarineCadastre, or Planetary-Computer loaders exist (`darkvessel.data.*` is not present).
+- **All eval / benchmark code.** `darkvessel.eval.xview3_bench` and the other benchmark modules do NOT exist. There is no measured number anywhere in this repo.
+- **Training.** `darkvessel.training.train` and the Hydra `configs/` tree do NOT exist. There is no shipped checkpoint or released dataset.
+- **The xView3 SOTA run.** Not run, not runnable from this repo.
 
 ## Why this repo exists
 
-Most remote sensing demos are narrow. They show classification on EuroSAT, or segmentation on SpaceNet, or change detection on LEVIR-CD, but never a single project that touches every sensor type, every canonical task, and a real downstream decision (here, "is this a dark vessel"). DarkVesselNet is the single-project answer to remote sensing interview screens. It is also the bridge between the author's dissertation on distortion-aware spatial data science and the production geospatial ML stack used at Microsoft AI for Good (Features of the World), Planet, Maxar, Allen AI (xView3), Global Fishing Watch, and Matter Intelligence.
+This is the bridge between the author's dissertation on distortion-aware spatial data science and the modern geospatial ML stack. The implemented core is the published TGARD / Pi-DPM anomaly line; the surrounding EO scaffold documents how that anomaly head would slot into a full multi-sensor pipeline. Treat the EO portions as a literacy-and-design reference, and the `src/` modules listed under "REAL" as the working code.
 
-## Highlights
+## The seven canonical tasks (design target, 1 of 7 implemented)
 
-- **Seven canonical EO tasks under one config tree.** Detection (DETR-on-SAR), instance segmentation (SAM 2 + SatlasNet), classification (Prithvi-2 head), change detection (siamese Clay encoder), super-resolution (PhysFlow-Earth pipeline integration), time-series forecasting (Prithvi-WxC / TimeSformer), and anomaly reasoning (TGARD + Pi-DPM).
-- **Four sensor modalities.** Sentinel-1 SAR (VV / VH, GRD + SLC), Sentinel-2 optical (L1C + L2A multispectral), Landsat-9 (thermal), PlanetScope (sub-3 m optical via tasking). All ingested through `stackstac` against Microsoft Planetary Computer's STAC catalog.
-- **Three open geospatial foundation models, swappable.** Prithvi-2 (NASA / IBM, 600M params, six bands), Clay v1 (Made with Clay, ViT-L), SatMAE++ (multi-spectral MAE, Cong et al. NeurIPS 2023). All loaded through Hugging Face; swap via Hydra config.
-- **Distortion-aware projection.** Inherits the closed-form RPC / pushbroom Jacobians from `sat-splat-distort` so SAR-optical fusion respects the actual sensor geometry rather than naive UTM warping. This is the dissertation contribution made operational.
-- **AIS fusion with anomaly heads.** Reuses the trajprompt traj-CLIP encoder; the TGARD module (Sharma et al., ACM TIST 2024) flags trajectory gaps; the Pi-DPM diffusion module (Sharma et al., SIGSPATIAL GeoAnomalies 2025) reconstructs the missing segment and scores spoofing likelihood.
-- **xView3-SAR benchmark.** Targets the Allen AI / DIU dark vessel detection leaderboard (Paolo et al., NeurIPS Datasets and Benchmarks 2022), including the close-to-shore subset, vessel-vs-non-vessel head, and the length regression task.
-- **Reproducible, testable, deployable.** Hydra configs, pytest math + smoke tests, Gradio Space, MSI Slurm submit scripts, Diffusers / Transformers-compatible checkpoints, ONNX export.
+Only task 7 (anomaly reasoning) is implemented. The rest are listed to document the intended scope, not shipped capability.
 
-## The seven canonical tasks, mapped
-
-| # | Task | Backbone | Dataset | Tie to thesis |
+| # | Task | Status | Intended backbone | Intended dataset |
 | --- | --- | --- | --- | --- |
-| 1 | Object detection | DETR head on Prithvi-2 features | xView3-SAR | none (pure RS) |
-| 2 | Instance segmentation | SAM 2 + SatlasNet adapter | SpaceNet 6, xView3 | none (pure RS) |
-| 3 | Classification | Prithvi-2 + linear probe | fMoW-Sentinel, BigEarthNet, EuroSAT | none (pure RS) |
-| 4 | Change detection | siamese Clay v1 encoder | LEVIR-CD, OSCD, xBD | port activity priors feed AGM |
-| 5 | Super-resolution | PhysFlow-Earth pipeline | WorldStrat, SEN2VENuS | physics constraints from Pi-DPM |
-| 6 | Time-series forecasting | TimeSformer + Prithvi-WxC | SEN12MS-CR-TS, custom AIS-aligned | feeds TGARD vessel-track continuation |
-| 7 | Anomaly reasoning | TGARD + Pi-DPM | MarineCadastre, xView3 dark labels | direct thesis: STAGD, DRM, AGM, Pi-DPM |
+| 1 | Object detection | planned | DETR head on backbone features | xView3-SAR |
+| 2 | Instance segmentation | planned | SAM 2 + SatlasNet adapter | SpaceNet 6, xView3 |
+| 3 | Classification | planned | linear probe on backbone | fMoW-Sentinel, BigEarthNet, EuroSAT |
+| 4 | Change detection | planned | siamese Clay encoder | LEVIR-CD, OSCD, xBD |
+| 5 | Super-resolution | planned | kriging-informed diffusion pipeline | WorldStrat, SEN2VENuS |
+| 6 | Time-series forecasting | planned | TimeSformer / Prithvi-WxC | SEN12MS-CR-TS |
+| 7 | **Anomaly reasoning (Pi-DPM)** | **implemented** | conditional diffusion over AIS + scene tokens | (trains on AIS segments; no released split) |
 
-## End-to-end pipeline
+## End-to-end pipeline (design sketch, NOT a running pipeline)
+
+The diagram below is the intended architecture. Only the bottom anomaly block (Pi-DPM head) is implemented; STAC ingest, the backbone forward on real weights, and the six upstream heads are not.
 
 ```
-[Microsoft Planetary Computer STAC]
+[Microsoft Planetary Computer STAC]   <-- PLANNED, no ingest code
    |
    v
-[stackstac] --Sentinel-1 VV/VH--+      +--[ AIS feed: MarineCadastre / DMA / xView3 AIS ]
+[stackstac] --Sentinel-1 VV/VH--+      +--[ AIS feed: MarineCadastre / DMA / xView3 AIS ]  <-- PLANNED
                                  |      |
                                  v      v
-                          [GeoFoundation backbone]
-                        Prithvi-2 / Clay / SatMAE++
+                          [GeoFoundation backbone]      <-- only a stub adapter exists
                                  |
               +------------------+------------------+----------+----------+
               v                  v                  v          v          v
-         [Detection]      [Segmentation]      [Classify]   [SR]    [Change det]
-            DETR             SAM 2/Satlas       linear    PhysFlow   siamese
+         [Detection]      [Segmentation]      [Classify]   [SR]    [Change det]   <-- ALL PLANNED
               |                  |                  |          |          |
               +--------+---------+---------+--------+----------+----------+
-                       v                   v
-                [Vessel candidate set]  [Wake / port-state features]
+                       v
+                [Pi-DPM conditional-diffusion anomaly head]   <-- IMPLEMENTED (heads/anomaly.py + pidpm/)
                        |
                        v
-                [Traj-CLIP align with AIS]  <----- [trajprompt encoder]
-                       |
-                       v
-                [TGARD gap detector]  <----- thesis: rendezvous + STAGD + DRM
-                       |
-                       v
-                [Pi-DPM trajectory reconstruction]  <----- thesis: physics-informed diffusion
-                       |
-                       v
-                [Dark vessel probability map + reasoning trace]
+                [Dark vessel score + reconstructed AIS segment]
 ```
 
 ## Quickstart
@@ -77,28 +80,35 @@ Most remote sensing demos are narrow. They show classification on EuroSAT, or se
 git clone https://github.com/arunshar/darkvessel-stack
 cd darkvessel-stack
 uv venv --python 3.11 .venv && source .venv/bin/activate
-uv pip install -e ".[dev,space]"
-bash scripts/download_xview3_sample.sh        # 8 GB sample, full set is 130 GB
+uv pip install -e ".[dev]"
+pytest                                          # the math tests pass (15 tests)
+```
+
+The following commands are PLANNED and NOT yet runnable. The referenced modules, configs, and scripts do not exist in this repo:
+
+```bash
+# NOT RUNNABLE YET (no data loader, no download script):
+bash scripts/download_xview3_sample.sh
+
+# NOT RUNNABLE YET (no darkvessel.training.train module, no configs/ tree):
 python -m darkvessel.training.train +experiment=xview3_prithvi
 ```
 
-## Smoke tests
+## Tests
 
 ```bash
-pytest                                              # math + smoke
-python /tmp/launch_smoke.py "$(pwd)" space/app.py   # boots Gradio on a real port
+pytest                                          # math tests only; these pass
 ```
 
-Verified status (CPU smoke, target):
-- math tests: SAR speckle filter consistency, Sentinel-2 atmospheric correction (Sen2Cor parity), Prithvi-2 patch embed shape, traj-CLIP L2 norm, TGARD haversine distance, Pi-DPM kinematic residual.
-- Space smoke tests: STAC tile fetch (mocked), foundation backbone forward, multi-head dispatch, AIS join, UI build, HF README frontmatter, `space/requirements.txt` parseable.
-- Gradio Space launches on a local port and serves HTTP 200 with valid Gradio HTML.
+The math tests cover what is actually implemented: SAR Lee-filter consistency and variance reduction, band-ratio correctness, GeoBackbone stub patch-embed shape, TGARD haversine distance, fusion grid-sample shape, and a Pi-DPM conditional-diffusion forward pass plus diffusion loss. There is no benchmark, no checkpoint, and no measured leaderboard number in this repo.
 
-## Try the live demo
+## Demo Space (CPU stub, returns a seeded pseudo-score, NOT a model output)
 
-[HF Space](https://huggingface.co/spaces/Arun0808/darkvessel-stack). Click an AOI on the Mapbox dark-theme globe (Gulf of Oman, Strait of Hormuz, South China Sea, Galapagos EEZ, Sea of Japan); the public demo runs a CPU-safe scaffold of the seven-head pipeline and renders a reasoning trace per detection.
+`space/app.py` is a Gradio CPU stub. It does NOT load any foundation model and does NOT run the real anomaly head. On click it seeds the RNG from the AOI name and returns a deterministic pseudo-random "dark vessel probability" plus a hard-coded reasoning string. It exists to show the intended UI shape only. Do not read its output as a detection.
 
-## Sensor primer (the 90-second version)
+## Sensor primer (background, not implemented capability)
+
+The table below is reference material on the four sensor modalities the design targets. It documents what the pipeline *would* fuse; the repo does not currently ingest any of these sensors.
 
 | Modality | Sentinel mission | Spatial | Temporal | Spectral | Strength | Weakness |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -107,25 +117,19 @@ Verified status (CPU smoke, target):
 | Thermal | Landsat-9 TIRS | 100 m | 16 d | 10.8 + 12.0 um | Heat signatures (engines, fires) | Low spatial res |
 | High-res optical | PlanetScope / SkySat | 3 m / 0.5 m | Daily | RGB-NIR | Visible vessel structure | Tasking cost, cloud-limited |
 
-DarkVesselNet uses all four. SAR is the workhorse for vessel detection in the open ocean because it is the only modality that sees at night and through cloud. Optical confirms. Thermal disambiguates wakes and engine heat. PlanetScope, where licensed, classifies vessel type.
+The intent: SAR as the workhorse for vessel detection in the open ocean (the only modality that sees at night and through cloud), optical to confirm, thermal to disambiguate wakes and engine heat, and high-res optical (where licensed) to classify vessel type.
 
-## SAR-specific pipeline notes
+## SAR / optical preprocessing notes (background; only the Lee filter and band ratios are coded)
 
-- Calibration: GRD products are radiometrically calibrated to sigma0 via the official calibration LUT; we apply Lee speckle filter (5x5) before backbone embedding.
-- Polarization: VV is the primary channel for vessel returns on water (water is a near-specular reflector at VV, vessels are corner reflectors); VH adds discrimination of bright clutter (rigs, buoys).
-- Geocoding: terrain correction via SNAP / pyroSAR against Copernicus DEM-30 before fusion with optical.
-- Layover handling: vessels near coastline within layover masks are routed to a separate close-to-shore head, matching the xView3 evaluation protocol.
+- SAR calibration to sigma0 via the official calibration LUT, terrain correction via SNAP / pyroSAR against Copernicus DEM-30, and a close-to-shore layover head are described in the xView3 protocol but are NOT implemented here. The one implemented SAR primitive is the Lee speckle filter.
+- Optical atmospheric correction (Sen2Cor L2A) and sun-glint suppression are background notes, not code. The implemented optical primitives are the cloud-mask *stub* and the band ratios.
+- SAR-to-optical co-registration: the shipped warp is an identity-affine `grid_sample`, NOT the RPC + pushbroom Jacobians the design calls for.
 
-## Optical-specific pipeline notes
+## Foundation model menu (design notes; none are loaded or tested)
 
-- Atmospheric correction: Sen2Cor L2A products preferred; if only L1C is available, we run a learned correction head distilled from Sen2Cor outputs (Cloud-Net + SatlasNet preprocessing).
-- Cloud masking: s2cloudless v1.7, threshold 0.4, with morphological dilation by 3 px.
-- Sun-glint suppression: linear regression on NIR / SWIR per scene, residualized for vessel scoring (specular glint mimics vessel signal otherwise).
-- Co-registration with SAR: we use the RPC + pushbroom Jacobians from sat-splat-distort to warp Sentinel-1 GRD pixels onto the Sentinel-2 grid without resampling-induced shift, then fuse at the backbone token level.
+This menu records candidate open backbones the `GeoBackbone` adapter is *designed* to wrap. The adapter only carries their metadata cards and a stub forward today; no weights are downloaded, loaded, or fine-tuned in any tested path.
 
-## Foundation model menu
-
-| Backbone | Source | Params | Pretraining data | When we use it |
+| Backbone | Source | Params | Pretraining data | Intended use |
 | --- | --- | --- | --- | --- |
 | Prithvi-2 | NASA + IBM, Apache 2.0 | 600M | 4.2 TB HLS L30/S30 | default detection + classification head |
 | Clay v1 | Made with Clay, MIT | 300M | 70 TB multi-sensor | change detection (siamese) |
@@ -134,76 +138,85 @@ DarkVesselNet uses all four. SAR is the workhorse for vessel detection in the op
 | SatlasNet | Allen AI | 90M Swin-B | Satlas | instance segmentation head |
 | RemoteCLIP | Liu et al., CVPR 2024 | 304M | RS-image text pairs | open-vocabulary retrieval |
 
-All are loaded via `darkvessel.backbones.GeoBackbone.from_pretrained(...)`; swap with one Hydra flag.
+The adapter signature is `darkvessel.backbones.GeoBackbone.from_pretrained(...)`, but only the `stub=True` path is exercised by tests.
 
-## Repository layout
+## Repository layout (annotated: which files exist vs. are planned)
+
+Files marked EXISTS are present in the repo. Files marked PLANNED are referenced in the design but are NOT in the repo.
 
 ```
 darkvessel-stack/
 ├── src/darkvessel/
-│   ├── backbones/{prithvi.py, clay.py, satmae.py, dofa.py, satlas.py, remoteclip.py, geo_backbone.py}
-│   ├── heads/{detection.py, segmentation.py, classification.py, change.py, sr.py, forecast.py, anomaly.py}
-│   ├── sar/{calibration.py, speckle.py, terrain_correction.py, polarimetry.py}
-│   ├── optical/{atm_correction.py, cloud_mask.py, sun_glint.py, band_ratios.py}
-│   ├── fusion/{coregistration.py, token_fusion.py, late_fusion.py}
-│   ├── ais/{trajclip.py, tgard.py, pidpm.py}       # vendored from trajprompt + Pi-DPM repo
-│   ├── data/{xview3.py, sen12ms.py, spacenet.py, fmow.py, ais_marinecadastre.py, planetary_computer.py}
-│   ├── eval/{xview3_bench.py, oscd_bench.py, fmow_bench.py, worldstrat_bench.py}
-│   ├── training/train.py                            # Hydra-configured
-│   └── viz/{folium_map.py, attention_rollout.py, reasoning_trace.py}
-├── space/app.py                                     # Gradio HF Space
-├── configs/                                         # Hydra
-│   ├── experiment/xview3_prithvi.yaml
-│   ├── experiment/oscd_clay_change.yaml
-│   ├── experiment/worldstrat_physflow_sr.yaml
-│   └── ...
-├── tests/                                           # math + smoke
-├── paper/{main.tex, supplement.tex}                 # CVPR EarthVision 2027
-├── docs/{architecture.md, sensor_primer.md, foundation_models.md, anomaly_pipeline.md}
-└── scripts/{download_xview3_sample.sh, submit_msi.slurm, hf_push.sh}
+│   ├── backbones/
+│   │   └── geo_backbone.py            # EXISTS (stub adapter; no real weights loaded)
+│   │   # prithvi.py, clay.py, satmae.py, dofa.py, satlas.py, remoteclip.py  -> PLANNED
+│   ├── heads/
+│   │   └── anomaly.py                 # EXISTS (real conditional-diffusion Pi-DPM head)
+│   │   # detection.py, segmentation.py, classification.py, change.py, sr.py, forecast.py -> PLANNED
+│   ├── pidpm/                         # EXISTS (vendored Pi-DPM: config, data, diffusion,
+│   │   │                             #         model, physics, scoring, train, eval)
+│   ├── sar/
+│   │   └── speckle.py                 # EXISTS (Lee filter)
+│   │   # calibration.py, terrain_correction.py, polarimetry.py -> PLANNED
+│   ├── optical/
+│   │   └── cloud_mask.py              # EXISTS (cloud-mask stub + band ratios)
+│   │   # atm_correction.py, sun_glint.py, band_ratios.py(standalone) -> PLANNED
+│   ├── fusion/
+│   │   └── coregistration.py          # EXISTS (identity-affine grid_sample warp)
+│   │   # token_fusion.py, late_fusion.py -> PLANNED
+│   ├── ais/
+│   │   └── tgard.py                   # EXISTS (haversine + rendezvous geometry only)
+│   │   # trajclip.py, pidpm.py, dark_distortion.py -> PLANNED (do NOT exist)
+│   ├── data/                          # PLANNED (entire directory absent)
+│   ├── eval/                          # PLANNED (entire directory absent; no xview3_bench)
+│   ├── training/                      # PLANNED (no train.py, no Hydra configs)
+│   └── viz/                           # PLANNED (entire directory absent)
+├── space/app.py                       # EXISTS (Gradio CPU stub, seeded pseudo-score)
+├── configs/                           # PLANNED (no Hydra config tree)
+├── tests/test_math.py                 # EXISTS (15 math tests, pass)
+├── paper/{main.tex, main.pdf}         # EXISTS (draft)
+├── docs/                              # EXISTS (architecture, sensor_primer,
+│                                      #         foundation_models, anomaly_pipeline)
+└── scripts/                           # download/submit scripts -> PLANNED
 ```
 
-## Reproducing xView3 numbers
+## Planned evaluation (NOT measured, no eval code yet)
 
-```bash
-python -m darkvessel.eval.xview3_bench \
-  --backbone prithvi-2 \
-  --checkpoint hf://Arun0808/darkvessel-stack-xview3 \
-  --metric aggregate_score detection_fscore length_rmse close_to_shore_fscore
-```
+There is no eval code in this repo (`darkvessel.eval.xview3_bench` does not exist), no trained checkpoint, and no released split, so DarkVesselNet has produced no measured number. The table below lists only published xView3-SAR baselines as a reference for what a future evaluation would compare against. DarkVesselNet does NOT appear in it because it has not been run.
 
-Target leaderboard (baselines from Paolo et al., NeurIPS D&B 2022, and the public xView3 leaderboard at challenge close):
+Reference baselines (from Paolo et al., NeurIPS Datasets and Benchmarks 2022, and the public xView3 leaderboard at challenge close):
 
 | Method | Aggregate score | Detection F1 | Length RMSE (m) | Close-to-shore F1 |
 | --- | --- | --- | --- | --- |
 | xView3 baseline (FRCNN) | 27.7 | 0.39 | 32.7 | 0.27 |
 | 1st place (BloodAxe et al.) | 50.6 | 0.62 | 19.5 | 0.42 |
 | SatlasNet-XL (Allen AI) | 47.8 | 0.59 | 21.1 | 0.40 |
-| **DarkVesselNet (Prithvi-2 + Pi-DPM)** | **52.4** | **0.64** | **18.2** | **0.45** |
 
-Numbers above are *targets*; the repo ships with the baseline + Prithvi-2 frozen-features setup that reproduces the literature baselines on the publicly released xView3 validation split, and a training recipe for the full leaderboard run on MSI / Polaris (estimated 180 A100h).
+A training and evaluation harness against this benchmark is on the roadmap; none of it is shipped here.
 
 ## Connection to my published work
 
-| Thesis contribution | Where it lives in this repo | Original venue |
-| --- | --- | --- |
-| TGARD (trajectory rendezvous + anomaly gap detection) | `src/darkvessel/ais/tgard.py` | ACM TIST 2024 |
-| Pi-DPM (physics-informed diffusion for trajectory anomalies) | `src/darkvessel/ais/pidpm.py` and `src/darkvessel/heads/anomaly.py` | ACM SIGSPATIAL GeoAnomalies 2025 |
-| STAGD + DRM (denial-based distortion) | `src/darkvessel/ais/dark_distortion.py` | ACM TIST 2024 |
-| Distortion-aware projection (RPC / pushbroom Jacobians) | `src/darkvessel/fusion/coregistration.py` | reused from sat-splat-distort, CVPR EarthVision 2027 |
-| Kriging-informed conditional diffusion for downscaling | `src/darkvessel/heads/sr.py` (via physflow-earth) | SIGSPATIAL 2024 |
+| Thesis contribution | Where it lives in this repo | Status | Original venue |
+| --- | --- | --- | --- |
+| Pi-DPM (physics-informed diffusion for trajectory anomalies) | `src/darkvessel/heads/anomaly.py` + `src/darkvessel/pidpm/` | real conditional diffusion now | ACM SIGSPATIAL GeoAnomalies 2025 |
+| TGARD (trajectory rendezvous + anomaly gap geometry) | `src/darkvessel/ais/tgard.py` | geometric core only (no full STAGD/DRM) | ACM TIST 2024 |
+| STAGD + DRM (denial-based distortion) | not in this repo (`ais/dark_distortion.py` does NOT exist) | planned | ACM TIST 2024 |
+| Distortion-aware projection (RPC / pushbroom Jacobians) | `src/darkvessel/fusion/coregistration.py` | only an identity-affine warp; the RPC Jacobians are NOT implemented | reused from sat-splat-distort (draft) |
+| Kriging-informed conditional diffusion for downscaling | not in this repo (no `heads/sr.py`) | planned | SIGSPATIAL 2024 |
+
+Note: the modules `src/darkvessel/ais/pidpm.py` and `src/darkvessel/ais/dark_distortion.py` referenced in earlier drafts do NOT exist. The real Pi-DPM implementation is under `heads/anomaly.py` and the vendored `pidpm/` package.
 
 ## Citation
 
 ```bibtex
-@inproceedings{sharma2027darkvesselnet,
-  title  = {DarkVesselNet: A Multi-Modal Remote Sensing Stack for Dark Vessel Detection},
+@misc{sharma_darkvesselnet,
+  title  = {DarkVesselNet: A Multi-Modal Remote Sensing Scaffold for Dark Vessel Detection (work in progress)},
   author = {Sharma, Arun},
-  booktitle = {CVPR EarthVision Workshop},
-  year   = {2027}
+  note   = {Reference scaffold; only the Pi-DPM anomaly head and core math primitives are implemented},
+  year   = {2026}
 }
 ```
 
 ## License
 
-Apache 2.0. Prithvi-2 retains its Apache 2.0 license; Clay v1 is MIT; SatMAE++ checkpoints are CC-BY-NC and not redistributed (download script fetches from the authors). xView3 data is under the Allen AI Impact License.
+Apache 2.0. The foundation models named in the design notes retain their own licenses (Prithvi-2 Apache 2.0; Clay v1 MIT; SatMAE++ CC-BY-NC); none are redistributed here. xView3 data is under the Allen AI Impact License.
