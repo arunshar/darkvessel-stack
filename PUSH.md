@@ -383,22 +383,9 @@ datasets:
 metrics:
   - f1
   - rmse
-model-index:
-  - name: darkvessel-stack-xview3
-    results:
-      - task:
-          type: object-detection
-          name: Dark Vessel Detection
-        dataset:
-          name: xView3-SAR
-          type: image
-        metrics:
-          - type: aggregate_score
-            value: 52.4
-          - type: detection_f1
-            value: 0.64
-          - type: length_rmse
-            value: 18.2
+# no model-index results block: no checkpoint has been trained and no xView3
+# metrics have been measured, so none are reported here (add them only after a
+# real benchmark run produces them).
 ---
 ```
 
