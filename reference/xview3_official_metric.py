@@ -159,6 +159,18 @@ def compute_loc_performance(preds, gt, distance_tolerance=200, costly_dist=False
             that do not match any detection in pred within dist_tol
     """
 
+    # LOCAL PATCH (not in upstream xView3 metric): the official scorer assumes each
+    # scored scene has >=1 prediction and >=1 ground-truth row. np.array(list(zip(...)))
+    # over an empty column yields a 1-D (0,) array, which crashes distance_matrix
+    # ("not enough values to unpack"). A scene with no predictions is legitimate on
+    # real SAR. Guard the empty cases with their defined semantics (no change to
+    # scoring): zero predictions -> every gt is a false negative; zero gt -> every
+    # prediction is a false positive.
+    if len(preds) == 0:
+        return [], [], list(gt.index)
+    if len(gt) == 0:
+        return [], list(preds.index), []
+
     # Getting pixel-level predicted and ground-truth detections
     pred_array = np.array(
         list(zip(preds["detect_scene_row"], preds["detect_scene_column"]))

@@ -121,6 +121,29 @@ def test_scorer_perfect_prediction_scores_high() -> None:
     assert 0.0 <= scores["aggregate"] <= 1.0
 
 
+def test_scorer_handles_scene_with_no_predictions() -> None:
+    # gt spans two scenes; predictions cover only scene A, so scene B has ZERO
+    # predictions. The official score() loops per scene, so this exercises the
+    # per-scene empty-prediction path that crashed distance_matrix on real data.
+    bench = _bench()
+    gt = bench.labels_to_dataframe([
+        {"scene_id": "A", "detect_scene_row": 10, "detect_scene_column": 10,
+         "is_vessel": True, "is_fishing": False, "vessel_length_m": 30.0,
+         "confidence": "HIGH", "distance_from_shore_km": 5.0},
+        {"scene_id": "B", "detect_scene_row": 20, "detect_scene_column": 20,
+         "is_vessel": True, "is_fishing": False, "vessel_length_m": 40.0,
+         "confidence": "HIGH", "distance_from_shore_km": 5.0},
+    ])
+    pred = bench.predictions_to_dataframe([
+        {"scene_id": "A", "detect_scene_row": 10, "detect_scene_column": 10,
+         "is_vessel": True, "is_fishing": False, "vessel_length_m": 30.0},
+    ])
+    scores = bench.score_predictions(pred, gt, shore_root=None)
+    # 1 TP (scene A) + 1 FN (scene B, no preds) + 0 FP -> recall .5, precision 1 -> f1 = 2/3
+    assert scores["loc_fscore"] > 0.0
+    assert abs(scores["loc_fscore"] - (2.0 / 3.0)) < 1e-6
+
+
 def test_scorer_empty_prediction_scores_zero() -> None:
     bench = _bench()
     ds = XView3Dataset.synthetic(n_scenes=1, vessels_per_scene=5, seed=4)
