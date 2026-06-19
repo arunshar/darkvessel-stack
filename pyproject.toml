@@ -30,6 +30,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.4", "mypy>=1.10"]
 space = ["gradio>=4.30", "folium>=0.16", "branca>=0.7", "pillow>=10.0"]
+xview3 = ["pandas>=2.0", "tqdm>=4.66"]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

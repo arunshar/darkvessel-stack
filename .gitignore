@@ -5,7 +5,9 @@ __pycache__/
 build/
 dist/
 .DS_Store
-data/
+# anchor to repo root: a top-level data/ dir, NOT the src/darkvessel/data package
+/data/
+!src/darkvessel/data/
 checkpoints/
 *.pt
 *.safetensors
