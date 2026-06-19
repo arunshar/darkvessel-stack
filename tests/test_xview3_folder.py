@@ -9,6 +9,17 @@ from __future__ import annotations
 
 import pytest
 
+# rasterio's wheels link against system libraries (e.g. libexpat) that the lean
+# CPU CI image lacks, so `import rasterio` can raise a load-time ImportError that
+# is NOT a ModuleNotFoundError, which pytest.importorskip does not treat as
+# skippable. Guard the whole module so it cleanly skips wherever rasterio cannot
+# fully import (CI), and runs where it can (the mirror_pnemo container).
+try:
+    import rasterio  # noqa: F401
+    from rasterio.transform import from_origin  # noqa: F401
+except Exception as _exc:  # pragma: no cover - environment dependent
+    pytest.skip(f"rasterio not importable: {_exc}", allow_module_level=True)
+
 
 def _build_scene_dirs(tmp_path):
     import numpy as np
