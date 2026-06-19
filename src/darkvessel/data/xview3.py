@@ -224,6 +224,7 @@ class XView3Dataset(Dataset):
         root: str | Path,
         labels_csv: str | Path,
         glob: str = "**/*.SAFE.zip",
+        max_scenes: int | None = None,
         **kw: Any,
     ) -> "XView3Dataset":
         """Build from a directory of GRD ``.SAFE.zip`` products + a label CSV.
@@ -231,7 +232,8 @@ class XView3Dataset(Dataset):
         ``root`` is scanned with ``glob`` for SAFE zips; each becomes a
         :class:`SARScene`. The label CSV is grouped by ``scene_id``. The scene id
         is the SAFE product stem (filename without ``.SAFE.zip``); ensure the CSV's
-        ``scene_id`` uses the same convention.
+        ``scene_id`` uses the same convention. ``max_scenes`` caps the number of
+        scenes (sorted order) for a quick validation-subset run.
         """
         import pandas as pd  # lazy: only the real path needs pandas
         from darkvessel.data.sar_scene import SARScene  # lazy: pulls rasterio
@@ -240,6 +242,8 @@ class XView3Dataset(Dataset):
         zips = sorted(root.glob(glob))
         if not zips:
             raise FileNotFoundError(f"no SAFE zips matching {glob!r} under {root}")
+        if max_scenes is not None:
+            zips = zips[:max_scenes]
         scenes, scene_ids = [], []
         for z in zips:
             scenes.append(SARScene(str(z)))
