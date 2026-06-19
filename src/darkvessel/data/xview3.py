@@ -254,6 +254,50 @@ class XView3Dataset(Dataset):
         return cls(scenes, scene_ids, labels_by_scene, **kw)
 
     @classmethod
+    def from_xview3_directory(
+        cls,
+        root: str | Path,
+        labels_csv: str | Path,
+        max_scenes: int | None = None,
+        **kw: Any,
+    ) -> "XView3Dataset":
+        """Build from the ORIGINAL xView3 per-scene-folder layout.
+
+        DIU's aria2 download unpacks each scene to a subdirectory named by
+        ``scene_id`` holding ``VV_dB.tif`` / ``VH_dB.tif`` (plus aux layers). Use
+        :meth:`from_directory` instead for Sentinel-1 ``.SAFE.zip`` products, or
+        :meth:`from_any` to auto-detect. ``max_scenes`` caps the scene count.
+        """
+        import pandas as pd  # lazy
+        from darkvessel.data.sar_scene import XView3SceneFolder  # lazy: pulls rasterio
+
+        root = Path(root)
+        scene_dirs = _find_xview3_scene_dirs(root)
+        if not scene_dirs:
+            raise FileNotFoundError(
+                f"no xView3 scene folders (a subdir with VV/VH GeoTIFFs) under {root}")
+        if max_scenes is not None:
+            scene_dirs = scene_dirs[:max_scenes]
+        scenes = [XView3SceneFolder(str(d)) for d in scene_dirs]
+        scene_ids = [d.name for d in scene_dirs]
+        df = pd.read_csv(labels_csv)
+        labels_by_scene = _group_labels(df)
+        return cls(scenes, scene_ids, labels_by_scene, **kw)
+
+    @classmethod
+    def from_any(
+        cls,
+        root: str | Path,
+        labels_csv: str | Path,
+        **kw: Any,
+    ) -> "XView3Dataset":
+        """Auto-detect the on-disk format: ``.SAFE.zip`` products vs xView3 folders."""
+        root = Path(root)
+        if any(root.rglob("*.SAFE.zip")):
+            return cls.from_directory(root, labels_csv, **kw)
+        return cls.from_xview3_directory(root, labels_csv, **kw)
+
+    @classmethod
     def synthetic(
         cls,
         n_scenes: int = 2,
@@ -334,6 +378,24 @@ class XView3Dataset(Dataset):
             "labels": labels,
         }
         return torch.from_numpy(chip), target
+
+
+def _find_xview3_scene_dirs(root: Path) -> list[Path]:
+    """Subdirectories of ``root`` that look like xView3 scenes (hold a VV GeoTIFF)."""
+    import os
+
+    def has_vv(d: Path) -> bool:
+        try:
+            return any(f.lower().endswith((".tif", ".tiff")) and "vv" in f.lower()
+                       for f in os.listdir(d))
+        except OSError:
+            return False
+
+    direct = sorted(p for p in root.iterdir() if p.is_dir() and has_vv(p))
+    if direct:
+        return direct
+    # fall back to one level of nesting (e.g. root/validation/<scene_id>/)
+    return sorted(p for p in root.rglob("*") if p.is_dir() and has_vv(p))
 
 
 def _group_labels(df: Any) -> dict[str, list[dict[str, Any]]]:

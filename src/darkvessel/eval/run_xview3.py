@@ -149,7 +149,8 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.data_root and args.labels_csv):
         p.error("--data-root and --labels-csv are required unless --self-test")
 
-    ds = XView3Dataset.from_directory(
+    # from_any auto-detects .SAFE.zip (SARFish) vs xView3 per-scene folders.
+    ds = XView3Dataset.from_any(
         args.data_root, args.labels_csv,
         max_scenes=args.limit_scenes, chip_size=args.chip_size, grid=args.grid)
 

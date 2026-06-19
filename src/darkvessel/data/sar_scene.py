@@ -15,6 +15,7 @@ schema scores via the vendored official metric (reference/xview3_official_metric
 from __future__ import annotations
 
 import io
+import os
 import zipfile
 from dataclasses import dataclass
 
@@ -102,3 +103,76 @@ class SARScene:
         with rasterio.open(self._vsi["vv"]) as ds:
             w = ds.read(1, window=Window(col0, row0, size, size), boundless=True, fill_value=0)
         return float((w != 0).mean())
+
+
+# nodata sentinel for the original xView3 dB GeoTIFFs (matches xView3_official_constants)
+NODATA_DB = -32768.0
+
+
+def _find_band(scene_dir: str, pol: str) -> str:
+    """Locate the VV/VH dB GeoTIFF in an xView3 scene folder (case/name tolerant)."""
+    pol = pol.lower()
+    tiffs = [f for f in os.listdir(scene_dir) if f.lower().endswith((".tif", ".tiff"))]
+    db = [f for f in tiffs if pol in f.lower() and "db" in f.lower()]
+    cands = db or [f for f in tiffs if pol in f.lower()]
+    if not cands:
+        raise FileNotFoundError(f"no {pol.upper()} GeoTIFF in {scene_dir}")
+    # prefer the canonical "<pol>_dB.tif"; otherwise the shortest matching name
+    cands.sort(key=lambda x: (0 if f"{pol}_db" in x.lower() else 1, len(x)))
+    return os.path.join(scene_dir, cands[0])
+
+
+@dataclass
+class XView3SceneFolder:
+    """Reader for an ORIGINAL xView3-SAR per-scene folder.
+
+    The xView3 distribution (DIU's aria2 download) unpacks each scene to a directory
+    named by ``scene_id`` holding dB-scaled GeoTIFFs: ``VV_dB.tif``, ``VH_dB.tif``,
+    plus ``bathymetry`` / ``owi*`` aux layers, with nodata ``-32768``. That differs
+    from the Sentinel-1 ``.SAFE`` GRD products :class:`SARScene` reads, so this
+    reader pulls VV_dB / VH_dB directly (no zip, no dB conversion). It exposes the
+    same duck-typed interface (``read_chip`` / ``chip_grid`` / ``valid_fraction`` /
+    ``shape``) so :class:`darkvessel.data.xview3.XView3Dataset` consumes it unchanged.
+    """
+
+    scene_dir: str
+
+    def __post_init__(self) -> None:
+        self._vv = _find_band(self.scene_dir, "vv")
+        self._vh = _find_band(self.scene_dir, "vh")
+        with rasterio.open(self._vv) as ds:
+            self.height, self.width = ds.height, ds.width
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        return (self.height, self.width)
+
+    def read_chip(self, row0: int, col0: int, size: int = 800,
+                  standardize: bool = True) -> np.ndarray:
+        """Return a (2, size, size) VV/VH dB chip; nodata (-32768) -> 0 after z-score."""
+        chans = []
+        for path in (self._vv, self._vh):
+            with rasterio.open(path) as ds:
+                w = ds.read(1, window=Window(col0, row0, size, size),
+                            boundless=True, fill_value=NODATA_DB)
+            band = w.astype(np.float32)
+            band[band == NODATA_DB] = np.nan
+            if standardize:
+                valid = np.isfinite(band)
+                if valid.any():
+                    mu, sd = band[valid].mean(), band[valid].std() + 1e-6
+                    band = (band - mu) / sd
+            chans.append(np.nan_to_num(band, nan=0.0))
+        return np.stack(chans, axis=0).astype(np.float32)
+
+    def chip_grid(self, size: int = 800, overlap: int = 0) -> list[tuple[int, int]]:
+        step = size - overlap
+        rows = list(range(0, max(self.height - size, 0) + 1, step)) or [0]
+        cols = list(range(0, max(self.width - size, 0) + 1, step)) or [0]
+        return [(r, c) for r in rows for c in cols]
+
+    def valid_fraction(self, row0: int, col0: int, size: int = 800) -> float:
+        with rasterio.open(self._vv) as ds:
+            w = ds.read(1, window=Window(col0, row0, size, size),
+                        boundless=True, fill_value=NODATA_DB)
+        return float((w != NODATA_DB).mean())
