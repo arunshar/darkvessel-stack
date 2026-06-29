@@ -62,14 +62,14 @@ footer{padding:26px 0 50px;color:var(--mut);font-size:13.5px;text-align:center}
     <a class="btn alt" href="https://arunshar.com/projects/darkvessel-stack/explained.html">Deep explainer</a>
   </div>
   <div class="pills">
-    <span class="pill">Sentinel-1 SAR</span><span class="pill">Sentinel-2 optical</span><span class="pill">AIS fusion</span><span class="pill">Prithvi-2 / Clay / SatMAE++</span><span class="pill">TGARD + Pi-DPM</span><span class="pill">15/15 tests pass</span>
+    <span class="pill">Sentinel-1 SAR</span><span class="pill">Sentinel-2 optical</span><span class="pill">AIS fusion</span><span class="pill">Prithvi-2 / Clay / SatMAE++</span><span class="pill">TGARD + Pi-DPM</span><span class="pill">53 tests pass</span>
   </div>
 </div></header>
 
 <section><div class="wrap">
   <h2>Abstract</h2>
   <p class="lead">A ship goes dark by silencing, spoofing, or jamming its AIS transponder, the GPS beacon vessels are legally required to broadcast. Catching it means fusing: AIS says where ships <i>claim</i> to be; Sentinel-1 radar and Sentinel-2 optical say where ships <i>actually</i> are. Each sensor has a blind spot, optical is blocked by cloud and night, SAR is grainy, AIS is trivially spoofable, so a vessel cannot hide in every modality at once. DarkVesselNet co-registers SAR onto the optical grid with the real per-pixel sensor models, embeds both through a shared geospatial foundation-model backbone, and scores the contradiction between the imagery and the AIS track. The anomaly half is the author's published thesis work made operational: TGARD scores how kinematically infeasible an AIS gap is, and the Pi-DPM head scores how implausible a reconstructed track is against a bicycle-model prior.</p>
-  <div class="callout warn"><b>Honest scope.</b> This is the breadth showcase, the modern remote-sensing CV stack a senior scientist is expected to wield. What is <b>real and tested</b> (15/15 math tests, verified passing) is a toolkit of EO primitives (Lee speckle filter, cloud masking + spectral band ratios, haversine + the TGARD rendezvous algorithm), a foundation-model adapter (<code>GeoBackbone</code> over six real models, with a CPU stub mode), a distortion-aware co-registration warp, and the Pi-DPM anomaly head. The headline "<b>7 canonical EO tasks under one config tree</b>" and the <b>xView3-SAR leaderboard</b> are the roadmap, not seven trained pipelines. The anomaly task is the one with real, published math.</div>
+  <div class="callout warn"><b>Honest scope.</b> This is the breadth showcase, the modern remote-sensing CV stack a senior scientist is expected to wield. What is <b>real and tested</b> (53 tests pass, verified live) is a toolkit of EO primitives (Lee speckle filter, cloud masking + spectral band ratios, haversine + the TGARD rendezvous algorithm), a foundation-model adapter (<code>GeoBackbone</code> over six real models, with a CPU stub mode), a distortion-aware co-registration warp, and the Pi-DPM anomaly head. The headline "<b>7 canonical EO tasks under one config tree</b>" and the <b>xView3-SAR leaderboard</b> are the roadmap, not seven trained pipelines. The anomaly task is the one with real, published math.</div>
 </div></section>
 
 <section><div class="wrap">
@@ -120,7 +120,7 @@ footer{padding:26px 0 50px;color:var(--mut);font-size:13.5px;text-align:center}
       <tr><td>Distortion-aware co-registration warp</td><td><span class="ok">Real</span> warp; RPC fit is the identity stub in tests</td></tr>
       <tr><td>"7 canonical tasks under one config tree"</td><td><span class="scaf">Aspirational</span> framing</td></tr>
       <tr><td>xView3-SAR leaderboard numbers</td><td><span class="scaf">Target</span>, not reproduced</td></tr>
-      <tr><td>Test suite</td><td><span class="ok">15/15 pass</span> (math primitives, CPU)</td></tr>
+      <tr><td>Test suite</td><td><span class="ok">53 pass</span> (run live, CPU; see <a href="https://github.com/arunshar/darkvessel-stack/blob/main/docs/EVIDENCE.md">EVIDENCE</a>)</td></tr>
     </tbody>
   </table>
 </div></section>
@@ -136,7 +136,8 @@ footer{padding:26px 0 50px;color:var(--mut);font-size:13.5px;text-align:center}
 </div></section>
 
 <footer><div class="wrap">
-  Research-engineering project. Honest scope stated above: the EO primitives, foundation-model adapter, co-registration warp, and Pi-DPM head are real and tested (15/15); the seven-task tree and xView3 numbers are the roadmap.
+  Research-engineering project. Honest scope stated above: the EO primitives, foundation-model adapter, co-registration warp, and Pi-DPM head are real and tested (53 tests, verified live); the seven-task tree and xView3 numbers are the roadmap.
+  <br>Built by Arun Sharma &middot; <a href="https://arunshar.com/projects/darkvessel-stack/">paper</a> &middot; <a href="https://github.com/arunshar/darkvessel-stack/blob/main/docs/EVIDENCE.md">evidence</a>
   <br>Built by Arun Sharma &middot; <a href="https://arunshar.com/projects/darkvessel-stack/">paper</a> &middot; <a href="https://github.com/arunshar/darkvessel-stack">code</a> &middot; <a href="https://huggingface.co/spaces/Arun0808/darkvessel-stack">demo</a> &middot; <a href="https://arunshar.com/projects/darkvessel-stack/explained.html">explainer</a>
 </div></footer>
 
