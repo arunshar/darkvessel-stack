@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DarkVesselNet: finding ships that hide by fusing SAR, optical, and AIS</title>
+<meta name="description" content="Detect dark vessels (ships that switch off AIS to hide) by fusing Sentinel-1 radar, Sentinel-2 optical, and AIS through geospatial foundation models, with anomaly reasoning from published thesis work (TGARD rendezvous + Pi-DPM spoofing scoring).">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Noto+Sans:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fbfcfe;--panel:#fff;--ink:#16202c;--mut:#5b6776;--line:#e6eaf0;--acc:#2257d6;--acc2:#0e9f6e;--warn:#b45309;--chip:#eef2f9;--code:#f3f5f9}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1116;--panel:#161b22;--ink:#e7ecf3;--mut:#9aa6b4;--line:#252c37;--acc:#6ea8fe;--acc2:#54d6a0;--warn:#ffb454;--chip:#1b212b;--code:#11151b}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.65;font-size:16px}
+h1,h2,h3,.brand{font-family:Montserrat,system-ui,sans-serif}
+a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:980px;margin:0 auto;padding:0 22px}
+header.hero{padding:56px 0 26px;text-align:center;border-bottom:1px solid var(--line)}
+.kept{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--mut);font-weight:700}
+h1.title{font-size:38px;line-height:1.12;margin:14px 0 6px;font-weight:800}
+.subtitle{font-size:18px;color:var(--mut);max-width:780px;margin:0 auto 8px}
+.authors{margin:14px 0 4px;font-size:16px}
+.aff{color:var(--mut);font-size:14px}
+.links{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:20px 0 4px}
+.btn{display:inline-flex;align-items:center;gap:7px;background:var(--ink);color:var(--bg);padding:8px 15px;border-radius:999px;font-weight:600;font-size:14px}
+.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn:hover{text-decoration:none;opacity:.92}
+.pills{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;margin:16px 0 0}
+.pill{background:var(--chip);color:var(--mut);border:1px solid var(--line);border-radius:999px;padding:3px 11px;font-size:12.5px;font-weight:600}
+section{padding:30px 0;border-bottom:1px solid var(--line)}
+h2{font-size:24px;margin:0 0 12px}
+h3{font-size:17px;margin:20px 0 6px}
+p{margin:10px 0}
+.lead{font-size:17px;color:var(--ink)}
+.fig{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}
+.figcap{color:var(--mut);font-size:13.5px;margin-top:8px;text-align:center}
+.callout{border-left:4px solid var(--acc2);background:var(--panel);border-radius:0 10px 10px 0;padding:14px 16px;margin:14px 0}
+.callout.warn{border-left-color:var(--warn)}
+.callout b{font-family:Montserrat}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14.5px}
+th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+th{background:var(--chip);font-family:Montserrat;font-size:13px}
+.ok{color:var(--acc2);font-weight:700}.scaf{color:var(--warn);font-weight:700}
+code,.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13.5px;background:var(--code);padding:1px 6px;border-radius:5px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card h3{margin-top:0}
+ul{margin:8px 0;padding-left:22px}li{margin:5px 0}
+footer{padding:26px 0 50px;color:var(--mut);font-size:13.5px;text-align:center}
+@media(max-width:740px){.grid2{grid-template-columns:1fr}h1.title{font-size:30px}}
+</style></head>
+<body>
+
+<header class="hero"><div class="wrap">
+  <div class="kept">Multimodal Remote Sensing &middot; Maritime Anomaly Detection</div>
+  <h1 class="title">DarkVesselNet</h1>
+  <div class="subtitle">Find ships that hide by switching off their AIS transponder, by fusing what the sky sees (Sentinel-1 radar + Sentinel-2 optical) with what the sea broadcasts (AIS), run through geospatial foundation models, with the anomaly reasoning from published thesis work (TGARD rendezvous + Pi-DPM spoofing scoring).</div>
+  <div class="authors">Arun Sharma</div>
+  <div class="aff">University of Minnesota &middot; research-engineering project</div>
+  <div class="links">
+    <a class="btn" href="https://arunshar.com/projects/darkvessel-stack/">Paper page</a>
+    <a class="btn alt" href="https://github.com/arunshar/darkvessel-stack">Code</a>
+    <a class="btn alt" href="https://huggingface.co/spaces/Arun0808/darkvessel-stack">Live demo (Space)</a>
+    <a class="btn alt" href="https://arunshar.com/study-guide/darkvessel-stack.html">Deep explainer</a>
+  </div>
+  <div class="pills">
+    <span class="pill">Sentinel-1 SAR</span><span class="pill">Sentinel-2 optical</span><span class="pill">AIS fusion</span><span class="pill">Prithvi-2 / Clay / SatMAE++</span><span class="pill">TGARD + Pi-DPM</span><span class="pill">15/15 tests pass</span>
+  </div>
+</div></header>
+
+<section><div class="wrap">
+  <h2>Abstract</h2>
+  <p class="lead">A ship goes dark by silencing, spoofing, or jamming its AIS transponder, the GPS beacon vessels are legally required to broadcast. Catching it means fusing: AIS says where ships <i>claim</i> to be; Sentinel-1 radar and Sentinel-2 optical say where ships <i>actually</i> are. Each sensor has a blind spot, optical is blocked by cloud and night, SAR is grainy, AIS is trivially spoofable, so a vessel cannot hide in every modality at once. DarkVesselNet co-registers SAR onto the optical grid with the real per-pixel sensor models, embeds both through a shared geospatial foundation-model backbone, and scores the contradiction between the imagery and the AIS track. The anomaly half is the author's published thesis work made operational: TGARD scores how kinematically infeasible an AIS gap is, and the Pi-DPM head scores how implausible a reconstructed track is against a bicycle-model prior.</p>
+  <div class="callout warn"><b>Honest scope.</b> This is the breadth showcase, the modern remote-sensing CV stack a senior scientist is expected to wield. What is <b>real and tested</b> (15/15 math tests, verified passing) is a toolkit of EO primitives (Lee speckle filter, cloud masking + spectral band ratios, haversine + the TGARD rendezvous algorithm), a foundation-model adapter (<code>GeoBackbone</code> over six real models, with a CPU stub mode), a distortion-aware co-registration warp, and the Pi-DPM anomaly head. The headline "<b>7 canonical EO tasks under one config tree</b>" and the <b>xView3-SAR leaderboard</b> are the roadmap, not seven trained pipelines. The anomaly task is the one with real, published math.</div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>How it works</h2>
+  <div class="fig">
+  <svg viewBox="0 0 920 320" xmlns="http://www.w3.org/2000/svg" width="100%" role="img" aria-label="DarkVesselNet data flow">
+    <style>
+      .b{fill:var(--panel);stroke:var(--line);stroke-width:1.5}
+      .t{font-family:Montserrat;font-size:13px;fill:var(--ink)}
+      .s{font-family:'Noto Sans';font-size:11px;fill:var(--mut)}
+      .real{stroke:var(--acc2);stroke-width:2}
+      .asp{stroke:var(--warn);stroke-dasharray:5 4;stroke-width:2}
+      .ar{stroke:var(--mut);stroke-width:1.6;fill:none;marker-end:url(#a)}
+    </style>
+    <defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--mut)"/></marker></defs>
+    <rect class="b real" x="10" y="16" width="180" height="48" rx="10"/><text class="t" x="22" y="38">Sentinel-1 SAR</text><text class="s" x="22" y="55">Lee speckle filter</text>
+    <rect class="b real" x="10" y="80" width="180" height="48" rx="10"/><text class="t" x="22" y="102">Sentinel-2 optical</text><text class="s" x="22" y="119">cloud mask + band ratios</text>
+    <rect class="b real" x="250" y="48" width="210" height="48" rx="10"/><text class="t" x="264" y="70">Distortion-aware co-reg</text><text class="s" x="264" y="87">RPC/pushbroom Jacobians</text>
+    <rect class="b real" x="520" y="48" width="200" height="48" rx="10"/><text class="t" x="534" y="70">GeoBackbone</text><text class="s" x="534" y="87">Prithvi-2 / Clay / SatMAE++</text>
+    <rect class="b real" x="10" y="170" width="180" height="48" rx="10"/><text class="t" x="22" y="192">AIS track</text><text class="s" x="22" y="209">TGARD rendezvous (gap)</text>
+    <rect class="b real" x="520" y="160" width="200" height="58" rx="10"/><text class="t" x="534" y="184">Pi-DPM anomaly head</text><text class="s" x="534" y="202">dark-vessel score + track</text>
+    <rect class="b" x="780" y="92" width="130" height="58" rx="10"/><text class="t" x="794" y="118">analyst-reviewable</text><text class="s" x="794" y="136">observation</text>
+    <path class="ar" d="M190,40 C220,40 225,68 248,70"/>
+    <path class="ar" d="M190,104 C220,104 225,76 248,72"/>
+    <path class="ar" d="M460,72 L518,72"/>
+    <path class="ar" d="M620,96 C620,120 600,150 600,158"/>
+    <path class="ar" d="M190,194 C360,194 420,196 518,192"/>
+    <path class="ar" d="M720,150 C750,150 760,120 778,120"/>
+    <text class="s" x="250" y="250" style="fill:var(--acc2)">green = real and tested (15 math tests)</text>
+    <text class="s" x="250" y="270" style="fill:var(--warn)">the 7-task config tree and xView3 numbers are the roadmap</text>
+  </svg>
+  <div class="figcap">Detection is the contradiction: AIS says "empty," the imagery shows a vessel. The anomaly head adds a physics-implausibility score.</div>
+  </div>
+
+  <h3>The rendezvous logic (TGARD), in one paragraph</h3>
+  <p>A legitimate AIS gap (lost signal in a dead zone) still has the vessel moving at its usual speed, so it covers roughly <code>speed&middot;dt</code>. A suspicious gap is one where the endpoints are far closer than the vessel could have traveled, meaning it slowed or stopped, often to meet another vessel at sea. The feasibility score <code>1 - d/reach</code> (where <code>reach = max_sog&middot;dt</code>) is near 1 when almost none of the reachable envelope was used. This is a kinematic-feasibility test vendored from the author's ACM TIST 2024 paper. The Pi-DPM head (SIGSPATIAL GeoAnomalies 2025) additionally scores how implausible a reconstructed track is against a single-axle Kinematic Bicycle Model, so even a spoofed-smooth track gets flagged. The co-registration reuses the same analytic-Jacobian skill as the author's sat-splat work, the dissertation through-line: Distortion-Aware Spatial Data Science to Sat-Splat-Distort to DarkVesselNet.</p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>What is real vs scaffold</h2>
+  <table>
+    <thead><tr><th>Component</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Lee speckle filter, cloud mask, band ratios (NDVI/NDWI/MNDWI/NDBI/SAVI)</td><td><span class="ok">Real</span>, tested</td></tr>
+      <tr><td>Haversine + TGARD rendezvous (published algorithm)</td><td><span class="ok">Real</span>, tested</td></tr>
+      <tr><td><code>GeoBackbone</code> adapter over 6 models + CPU stub mode</td><td><span class="ok">Real</span> adapter; weights download on demand</td></tr>
+      <tr><td><code>PiDPMAnomalyHead</code> (forward + backward)</td><td><span class="ok">Real</span> module; full diffusion sampler lives upstream</td></tr>
+      <tr><td>Distortion-aware co-registration warp</td><td><span class="ok">Real</span> warp; RPC fit is the identity stub in tests</td></tr>
+      <tr><td>"7 canonical tasks under one config tree"</td><td><span class="scaf">Aspirational</span> framing</td></tr>
+      <tr><td>xView3-SAR leaderboard numbers</td><td><span class="scaf">Target</span>, not reproduced</td></tr>
+      <tr><td>Test suite</td><td><span class="ok">15/15 pass</span> (math primitives, CPU)</td></tr>
+    </tbody>
+  </table>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Why it matters</h2>
+  <div class="grid2">
+    <div class="card"><h3>Multimodal sensor fusion</h3><p>SAR + optical + AIS through a swappable foundation-model backbone is the geospatial team's remit. The maritime domain is the vehicle; the methods (co-registration, foundation-model adapters, anomaly detection) carry over to street and road imagery.</p></div>
+    <div class="card"><h3>Published anomaly contribution</h3><p>The detection is not a black box: TGARD and Pi-DPM are the author's peer-reviewed algorithms made operational, and every decision flows back through a trace into an analyst-reviewable observation, not just an alert.</p></div>
+  </div>
+  <h3>Honest next step</h3>
+  <p>Make one task real end to end: vessel detection on the public xView3-SAR sample with a DETR head on Prithvi-2 tokens, then demonstrate the fusion win, a case where AIS says "empty" but SAR + the detector find a vessel. One trained task beats seven scaffolded ones.</p>
+</div></section>
+
+<footer><div class="wrap">
+  Research-engineering project. Honest scope stated above: the EO primitives, foundation-model adapter, co-registration warp, and Pi-DPM head are real and tested (15/15); the seven-task tree and xView3 numbers are the roadmap.
+  <br>Built by Arun Sharma &middot; <a href="https://arunshar.com/projects/darkvessel-stack/">paper</a> &middot; <a href="https://github.com/arunshar/darkvessel-stack">code</a> &middot; <a href="https://huggingface.co/spaces/Arun0808/darkvessel-stack">demo</a> &middot; <a href="https://arunshar.com/study-guide/darkvessel-stack.html">explainer</a>
+</div></footer>
+
+</body></html>
